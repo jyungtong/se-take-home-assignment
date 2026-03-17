@@ -6,7 +6,7 @@ set -e
 
 echo "Running unit tests..."
 
-# Run Node.js built-in test runner
+npm ci
 npm test
 
 echo "Unit tests completed"
