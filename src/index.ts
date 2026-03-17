@@ -1,20 +1,18 @@
-'use strict';
-
-const readline = require('readline');
-const { OrderManager } = require('./orderManager');
-const logger = require('./logger');
+import readline from 'readline';
+import { OrderManager } from './orderManager.js';
+import logger from './logger.js';
 
 /**
  * Returns a promise that resolves after `ms` milliseconds.
  * Allows the simulation to progress step-by-step with real timing.
  */
-function sleep(ms) {
+function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ─── Scripted simulation ──────────────────────────────────────────────────────
 
-async function main() {
+async function main(): Promise<void> {
   logger.initResultFile("McDonald's Order Management System - Simulation Results");
 
   const manager = new OrderManager();
@@ -69,7 +67,7 @@ async function main() {
 
 // ─── Interactive TUI ──────────────────────────────────────────────────────────
 
-function printStatusBar(manager) {
+function printStatusBar(manager: OrderManager): void {
   const s = manager.getStatus();
   const line = `Bots: ${s.bots} (${s.activeBots} active)  Pending: ${s.pending}  Done: ${s.completed}`;
   const width = Math.max(line.length + 4, 46);
@@ -80,7 +78,7 @@ function printStatusBar(manager) {
   console.log(`└${'─'.repeat(width - 2)}┘`);
 }
 
-function printMenu() {
+function printMenu(): void {
   console.log('  1) Add Normal Order');
   console.log('  2) Add VIP Order');
   console.log('  3) Add Bot');
@@ -90,7 +88,7 @@ function printMenu() {
   console.log('  7) Exit');
 }
 
-async function interactive() {
+async function interactive(): Promise<void> {
   logger.initResultFile("McDonald's Order Management System - Interactive Session");
 
   const manager = new OrderManager();
@@ -102,13 +100,13 @@ async function interactive() {
     terminal: false,
   });
 
-  const prompt = () => {
+  const prompt = (): void => {
     printStatusBar(manager);
     printMenu();
     process.stdout.write('> ');
   };
 
-  const shutdown = async () => {
+  const shutdown = async (): Promise<void> => {
     console.log('\nExiting. Goodbye!');
     rl.close();
     await logger.closeResultFile();
@@ -171,12 +169,12 @@ const args = process.argv.slice(2);
 const isInteractive = args.includes('--interactive') || args.includes('-i');
 
 if (isInteractive) {
-  interactive().catch((err) => {
+  interactive().catch((err: unknown) => {
     console.error('Interactive session failed:', err);
     process.exit(1);
   });
 } else {
-  main().catch((err) => {
+  main().catch((err: unknown) => {
     console.error('Simulation failed:', err);
     process.exit(1);
   });

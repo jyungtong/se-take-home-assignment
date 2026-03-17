@@ -7,6 +7,6 @@ set -e
 
 echo "Running CLI application..."
 
-node src/index.js
+npx tsx src/index.ts
 
 echo "CLI application execution completed"

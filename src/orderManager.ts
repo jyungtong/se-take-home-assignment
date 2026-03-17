@@ -1,18 +1,19 @@
-'use strict';
+import { Order, ORDER_TYPE } from './order.js';
+import { Bot } from './bot.js';
+import logger from './logger.js';
 
-const { Order, ORDER_TYPE, ORDER_STATUS } = require('./order');
-const { Bot } = require('./bot');
-const logger = require('./logger');
+export class OrderManager {
+  private _nextOrderId: number;
+  private _nextBotId: number;
+  private _pendingQueue: Order[];
+  private _completedOrders: Order[];
+  private _bots: Bot[];
 
-class OrderManager {
   constructor() {
     this._nextOrderId = 1;
     this._nextBotId = 1;
-    /** @type {Order[]} */
     this._pendingQueue = [];
-    /** @type {Order[]} */
     this._completedOrders = [];
-    /** @type {Bot[]} */
     this._bots = [];
   }
 
@@ -21,7 +22,7 @@ class OrderManager {
   // ---------------------------------------------------------------------------
 
   /** Add a new Normal order. */
-  addNormalOrder() {
+  addNormalOrder(): Order {
     const order = new Order(this._nextOrderId++, ORDER_TYPE.NORMAL);
     this._enqueue(order);
     logger.log(`Created ${order} - Status: ${order.status}`);
@@ -30,7 +31,7 @@ class OrderManager {
   }
 
   /** Add a new VIP order (placed after existing VIPs, before all Normals). */
-  addVIPOrder() {
+  addVIPOrder(): Order {
     const order = new Order(this._nextOrderId++, ORDER_TYPE.VIP);
     this._enqueue(order);
     logger.log(`Created ${order} - Status: ${order.status}`);
@@ -43,7 +44,7 @@ class OrderManager {
   // ---------------------------------------------------------------------------
 
   /** Create a new bot and immediately assign a pending order if available. */
-  addBot() {
+  addBot(): Bot {
     const bot = new Bot(this._nextBotId++, (b, order) => this._onOrderComplete(b, order));
     this._bots.push(bot);
     logger.log(`Bot #${bot.id} created - Status: ACTIVE`);
@@ -55,12 +56,12 @@ class OrderManager {
    * Destroy the newest bot. If it was processing an order, return that order
    * to its correct priority position in the pending queue.
    */
-  removeBot() {
+  removeBot(): Bot | null {
     if (this._bots.length === 0) {
       logger.log('No bots to remove');
       return null;
     }
-    const bot = this._bots.pop();
+    const bot = this._bots.pop()!;
     const returnedOrder = bot.cancel();
 
     if (returnedOrder) {
@@ -76,7 +77,7 @@ class OrderManager {
   // Status
   // ---------------------------------------------------------------------------
 
-  getStatus() {
+  getStatus(): { bots: number; pending: number; completed: number; activeBots: number } {
     return {
       bots: this._bots.length,
       pending: this._pendingQueue.length,
@@ -85,15 +86,15 @@ class OrderManager {
     };
   }
 
-  getPendingQueue() {
+  getPendingQueue(): Order[] {
     return [...this._pendingQueue];
   }
 
-  getCompletedOrders() {
+  getCompletedOrders(): Order[] {
     return [...this._completedOrders];
   }
 
-  getBots() {
+  getBots(): Bot[] {
     return [...this._bots];
   }
 
@@ -106,7 +107,7 @@ class OrderManager {
    * VIP orders go after the last existing VIP order, before any Normal orders.
    * Normal orders go at the end.
    */
-  _enqueue(order) {
+  private _enqueue(order: Order): void {
     if (order.type === ORDER_TYPE.VIP) {
       // Find the insertion point: after the last VIP entry
       let insertAt = 0;
@@ -122,21 +123,21 @@ class OrderManager {
   }
 
   /** Dispatch a specific idle bot to the next pending order if available. */
-  _dispatchBot(bot) {
+  private _dispatchBot(bot: Bot): void {
     if (this._pendingQueue.length === 0) {
       logger.log(`Bot #${bot.id} is now IDLE - No pending orders`);
       return;
     }
-    const order = this._pendingQueue.shift();
+    const order = this._pendingQueue.shift()!;
     bot.pickupOrder(order);
     logger.log(`Bot #${bot.id} picked up ${order} - Status: PROCESSING`);
   }
 
   /** Assign pending orders to all idle bots. */
-  _dispatchIdleBots() {
+  private _dispatchIdleBots(): void {
     for (const bot of this._bots) {
       if (bot.currentOrder === null && this._pendingQueue.length > 0) {
-        const order = this._pendingQueue.shift();
+        const order = this._pendingQueue.shift()!;
         bot.pickupOrder(order);
         logger.log(`Bot #${bot.id} picked up ${order} - Status: PROCESSING`);
       }
@@ -144,11 +145,9 @@ class OrderManager {
   }
 
   /** Called by a bot when it finishes processing an order. */
-  _onOrderComplete(bot, order) {
+  private _onOrderComplete(bot: Bot, order: Order): void {
     this._completedOrders.push(order);
     logger.log(`Bot #${bot.id} completed ${order} - Status: COMPLETE (Processing time: 10s)`);
     this._dispatchBot(bot);
   }
 }
-
-module.exports = { OrderManager };
