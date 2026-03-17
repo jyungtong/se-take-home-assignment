@@ -1,5 +1,6 @@
 'use strict';
 
+const readline = require('readline');
 const { OrderManager } = require('./orderManager');
 const logger = require('./logger');
 
@@ -10,6 +11,8 @@ const logger = require('./logger');
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+// ─── Scripted simulation ──────────────────────────────────────────────────────
 
 async function main() {
   logger.initResultFile("McDonald's Order Management System - Simulation Results");
@@ -64,7 +67,117 @@ async function main() {
   await logger.closeResultFile();
 }
 
-main().catch((err) => {
-  console.error('Simulation failed:', err);
-  process.exit(1);
-});
+// ─── Interactive TUI ──────────────────────────────────────────────────────────
+
+function printStatusBar(manager) {
+  const s = manager.getStatus();
+  const line = `Bots: ${s.bots} (${s.activeBots} active)  Pending: ${s.pending}  Done: ${s.completed}`;
+  const width = Math.max(line.length + 4, 46);
+  const pad = ' '.repeat(width - line.length - 4);
+  console.log('');
+  console.log(`┌${'─'.repeat(width - 2)}┐`);
+  console.log(`│  ${line}${pad}  │`);
+  console.log(`└${'─'.repeat(width - 2)}┘`);
+}
+
+function printMenu() {
+  console.log('  1) Add Normal Order');
+  console.log('  2) Add VIP Order');
+  console.log('  3) Add Bot');
+  console.log('  4) Remove Bot');
+  console.log('  5) Show pending queue');
+  console.log('  6) Show completed orders');
+  console.log('  7) Exit');
+}
+
+async function interactive() {
+  logger.initResultFile("McDonald's Order Management System - Interactive Session");
+
+  const manager = new OrderManager();
+  logger.log('Interactive session started - System initialized with 0 bots');
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: false,
+  });
+
+  const prompt = () => {
+    printStatusBar(manager);
+    printMenu();
+    process.stdout.write('> ');
+  };
+
+  const shutdown = async () => {
+    console.log('\nExiting. Goodbye!');
+    rl.close();
+    await logger.closeResultFile();
+    process.exit(0);
+  };
+
+  process.on('SIGINT', shutdown);
+
+  prompt();
+
+  for await (const line of rl) {
+    const choice = line.trim();
+    switch (choice) {
+      case '1':
+        manager.addNormalOrder();
+        break;
+      case '2':
+        manager.addVIPOrder();
+        break;
+      case '3':
+        manager.addBot();
+        break;
+      case '4':
+        manager.removeBot();
+        break;
+      case '5': {
+        const queue = manager.getPendingQueue();
+        if (queue.length === 0) {
+          console.log('  (pending queue is empty)');
+        } else {
+          queue.forEach((o, i) => console.log(`  ${i + 1}. ${o}`));
+        }
+        break;
+      }
+      case '6': {
+        const done = manager.getCompletedOrders();
+        if (done.length === 0) {
+          console.log('  (no completed orders yet)');
+        } else {
+          done.forEach((o, i) => console.log(`  ${i + 1}. ${o}`));
+        }
+        break;
+      }
+      case '7':
+        await shutdown();
+        return;
+      default:
+        console.log(`  Unknown option: "${choice}". Enter 1-7.`);
+    }
+    prompt();
+  }
+
+  // EOF on stdin (e.g. piped input finished)
+  await shutdown();
+}
+
+// ─── Entry point ──────────────────────────────────────────────────────────────
+
+const args = process.argv.slice(2);
+const isInteractive = args.includes('--interactive') || args.includes('-i');
+
+if (isInteractive) {
+  interactive().catch((err) => {
+    console.error('Interactive session failed:', err);
+    process.exit(1);
+  });
+} else {
+  main().catch((err) => {
+    console.error('Simulation failed:', err);
+    process.exit(1);
+  });
+}
