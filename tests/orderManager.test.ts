@@ -1,16 +1,14 @@
-'use strict';
-
-const { describe, it, before, beforeEach, afterEach } = require('node:test');
-const assert = require('node:assert/strict');
+import { describe, it, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
 
 // Silence logger output during tests
-const logger = require('../src/logger');
+import logger from '../src/logger.js';
 logger.log = () => {};
 logger.write = () => {};
 
-const { OrderManager } = require('../src/orderManager');
-const { ORDER_TYPE, ORDER_STATUS } = require('../src/order');
-const { PROCESSING_TIME_MS } = require('../src/bot');
+import { OrderManager } from '../src/orderManager.js';
+import { ORDER_TYPE, ORDER_STATUS } from '../src/order.js';
+import { PROCESSING_TIME_MS } from '../src/bot.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -80,7 +78,7 @@ describe('Bot - add bot', () => {
     // Clean up any lingering timers by removing all bots forcefully
   });
 
-  it('adding a bot with no pending orders leaves bot idle', (t) => {
+  it('adding a bot with no pending orders leaves bot idle', (_t) => {
     const manager = new OrderManager();
     manager.addBot();
     const bots = manager.getBots();
@@ -137,7 +135,7 @@ describe('Bot - order completion', () => {
     t.mock.timers.tick(PROCESSING_TIME_MS); // #1 completes; bot picks up #2
 
     const bots = manager.getBots();
-    assert.equal(bots[0].currentOrder.id, 2);
+    assert.equal(bots[0].currentOrder!.id, 2);
     t.mock.timers.reset();
   });
 
@@ -214,7 +212,7 @@ describe('Bot - remove bot', () => {
 
     const queue = manager.getPendingQueue();
     assert.equal(queue[0].type, ORDER_TYPE.VIP);
-    assert.equal(queue[0].id, 3);
+    assert.equal(queue[0].id, vip.id);
     t.mock.timers.reset();
   });
 

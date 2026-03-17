@@ -1,16 +1,20 @@
-'use strict';
+import { ORDER_STATUS, Order } from './order.js';
 
-const { ORDER_STATUS } = require('./order');
+export const BOT_STATUS = Object.freeze({ IDLE: 'IDLE', ACTIVE: 'ACTIVE' } as const);
+export type BotStatus = (typeof BOT_STATUS)[keyof typeof BOT_STATUS];
 
-const BOT_STATUS = Object.freeze({ IDLE: 'IDLE', ACTIVE: 'ACTIVE' });
-const PROCESSING_TIME_MS = 10_000;
+export const PROCESSING_TIME_MS = 10_000;
 
-class Bot {
-  /**
-   * @param {number} id
-   * @param {function(Bot): void} onOrderComplete  called when the bot finishes an order
-   */
-  constructor(id, onOrderComplete) {
+export type OnOrderComplete = (bot: Bot, order: Order) => void;
+
+export class Bot {
+  readonly id: number;
+  status: BotStatus;
+  currentOrder: Order | null;
+  private readonly _onOrderComplete: OnOrderComplete;
+  private _timer: ReturnType<typeof setTimeout> | null;
+
+  constructor(id: number, onOrderComplete: OnOrderComplete) {
     this.id = id;
     this.status = BOT_STATUS.IDLE;
     this.currentOrder = null;
@@ -19,7 +23,7 @@ class Bot {
   }
 
   /** Pick up an order and start processing it. */
-  pickupOrder(order) {
+  pickupOrder(order: Order): void {
     order.status = ORDER_STATUS.PROCESSING;
     this.currentOrder = order;
     this.status = BOT_STATUS.ACTIVE;
@@ -33,7 +37,7 @@ class Bot {
    * Cancel current processing (bot is being removed).
    * Returns the order that was in progress (or null if idle).
    */
-  cancel() {
+  cancel(): Order | null {
     if (this._timer) {
       clearTimeout(this._timer);
       this._timer = null;
@@ -47,8 +51,8 @@ class Bot {
     return order;
   }
 
-  _completeOrder() {
-    const order = this.currentOrder;
+  private _completeOrder(): void {
+    const order = this.currentOrder!;
     order.status = ORDER_STATUS.COMPLETE;
     this.currentOrder = null;
     this.status = BOT_STATUS.IDLE;
@@ -56,5 +60,3 @@ class Bot {
     this._onOrderComplete(this, order);
   }
 }
-
-module.exports = { Bot, BOT_STATUS, PROCESSING_TIME_MS };
