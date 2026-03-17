@@ -1,64 +1,302 @@
-## FeedMe Software Engineer Take Home Assignment
-Below is a take home assignment before the interview of the position. You are required to
-1. Understand the situation and use case. You may contact the interviewer for further clarification.
-2. implement the requirement with **either frontend or backend components**.
-3. Complete the requirement with **AI** if possible, but perform your own testing.
-4. Provide documentation for the any part that you think is needed.
-5. Bring the source code and functioning prototype to the interview session.
+# McDonald's Order Management System
 
-### Situation
-McDonald is transforming their business during COVID-19. They wish to build the automated cooking bots to reduce workforce and increase their efficiency. As one of the software engineer in the project. You task is to create an order controller which handle the order control flow. 
+A CLI-based automated order management system simulating McDonald's cooking-bot workflow. Built as a take-home software engineering assignment using Node.js and TypeScript.
 
-### User Story
-As below is part of the user story:
-1. As McDonald's normal customer, after I submitted my order, I wish to see my order flow into "PENDING" area. After the cooking bot process my order, I want to see it flow into to "COMPLETE" area.
-2. As McDonald's VIP member, after I submitted my order, I want my order being process first before all order by normal customer.  However if there's existing order from VIP member, my order should queue behind his/her order.
-3. As McDonald's manager, I want to increase or decrease number of cooking bot available in my restaurant. When I increase a bot, it should immediately process any pending order. When I decrease a bot, the processing order should remain un-process.
-4. As McDonald bot, it can only pickup and process 1 order at a time, each order required 10 seconds to complete process.
+---
 
-### Requirements
-1. When "New Normal Order" clicked, a new order should show up "PENDING" Area.
-2. When "New VIP Order" clicked, a new order should show up in "PENDING" Area. It should place in-front of all existing "Normal" order but behind of all existing "VIP" order.
-3. The order number should be unique and increasing.
-4. When "+ Bot" clicked, a bot should be created and start processing the order inside "PENDING" area. after 10 seconds picking up the order, the order should move to "COMPLETE" area. Then the bot should start processing another order if there is any left in "PENDING" area.
-5. If there is no more order in the "PENDING" area, the bot should become IDLE until a new order come in.
-6. When "- Bot" clicked, the newest bot should be destroyed. If the bot is processing an order, it should also stop the process. The order should return to its original position in the "PENDING" area (maintaining VIP/Normal order priority).
-7. No data persistance is needed for this prototype, you may perform all the process inside memory.
+## Table of Contents
 
-### Functioning Prototype
-You must implement **either** frontend or backend components as described below:
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Scripted Simulation](#scripted-simulation)
+  - [Interactive TUI](#interactive-tui)
+- [Running Tests](#running-tests)
+- [Project Structure](#project-structure)
+- [OrderManager API](#ordermanager-api)
+- [Design Decisions](#design-decisions)
+- [CI/CD](#cicd)
 
-#### 1. Frontend
-- You are free to use **any framework and programming language** of your choice
-- The UI application must be compiled, deployed and hosted on any publicly accessible web platform
-- Must provide a user interface that demonstrates all the requirements listed above
-- Should allow users to interact with the McDonald's order management system
+---
 
-#### 2. Backend
-- You must use **either Go (Golang) or Node.js** for the backend implementation
-- The backend must be a CLI application that can be executed in GitHub Actions
-- Must implement the following scripts in the `script` directory:
-  - `test.sh`: Contains unit test execution steps
-  - `build.sh`: Contains compilation steps for the CLI application
-  - `run.sh`: Contains execution steps that run the CLI application
-- The CLI application result must be printed to `result.txt`
-- The `result.txt` output must include timestamps in `HH:MM:SS` format to track order completion times
-- Must follow **GitHub Flow**: Create a Pull Request with your changes to this repository
-- Ensure all GitHub Action checks pass successfully
-- **Note**: An interactive CLI implementation is compulsory for the next round of interview. Candidates should be prepared to demonstrate interactive command handling.
+## Overview
 
-#### Submission Requirements
-- Fork this repository and implement your solution with either frontend or backend
-- **Frontend option**: Deploy to a publicly accessible URL using any technology stack
-- **Backend option**: Must be implemented in Go or Node.js and work within the GitHub Actions environment
-  - Follow GitHub Flow process with Pull Request submission
-  - All tests in `test.sh` must pass
-  - The `result.txt` file must contain meaningful output from your CLI application
-  - All output must include timestamps in `HH:MM:SS` format to track order completion times
-  - Submit a Pull Request and ensure the `go-verify-result` workflow passes
-- Provide documentation for any part that you think is needed
+The system models a restaurant order queue processed by a fleet of cooking bots. Key behaviors:
 
-### Tips on completing this task
-- Testing, testing and testing. Make sure the prototype is functioning and meeting all the requirements.
-- Treat this assignment as a vibe coding, don't over engineer it. Try to scope your working hour within 30 min. However, ensure you read and understand what your code doing.
-- Complete the implementation as clean as possible, clean code is a strong plus point, do not bring in all the fancy tech stuff.
+- **Normal orders** join the back of the pending queue (FIFO).
+- **VIP orders** are inserted after the last existing VIP order, ahead of all Normal orders.
+- **Cooking bots** each process one order at a time, taking exactly 10 seconds per order.
+- **Idle bots** immediately pick up a new order the moment one arrives.
+- **Bot removal** follows LIFO (newest bot first); any in-progress order is returned to its correct priority position in the pending queue.
+- All state is held in memory — no persistence layer.
+
+---
+
+## Architecture
+
+```
+                          ┌─────────────────┐
+                          │    index.ts      │
+                          │  (Entry Point)   │
+                          │                  │
+                          │  ┌────────────┐  │
+                          │  │   main()   │  │  <-- Scripted simulation
+                          │  └────────────┘  │
+                          │  ┌─────────────┐ │
+                          │  │interactive()│ │  <-- Interactive TUI (readline)
+                          │  └─────────────┘ │
+                          └────────┬─────────┘
+                                   │ creates & calls
+                                   ▼
+                       ┌─────────────────────────┐
+                       │      OrderManager        │
+                       │                          │
+                       │  _pendingQueue: Order[]  │  <-- Priority queue
+                       │  _completedOrders: []    │
+                       │  _bots: Bot[]            │
+                       │                          │
+                       │  addNormalOrder()        │
+                       │  addVIPOrder()           │
+                       │  addBot()                │
+                       │  removeBot()             │
+                       │  _enqueue()  (priority)  │
+                       │  _dispatchBot()          │
+                       │  _dispatchIdleBots()     │
+                       └────────┬────────────┬────┘
+                                │            │
+               creates/manages  │            │ onOrderComplete callback
+                                ▼            │
+                    ┌──────────────────┐     │
+                    │       Bot        │─────┘
+                    │                  │
+                    │  id: number      │
+                    │  currentOrder    │
+                    │  pickupOrder()   │  <-- sets 10s setTimeout
+                    │  cancel()        │  <-- clears timer, returns order
+                    └──────────────────┘
+                                │
+                        holds reference to
+                                ▼
+                    ┌──────────────────┐
+                    │      Order       │
+                    │                  │
+                    │  id: number      │
+                    │  type: VIP|Normal│
+                    │  status: PENDING │
+                    │         PROCESSING│
+                    │         COMPLETE │
+                    └──────────────────┘
+
+        All components write through:
+                    ┌──────────────────┐
+                    │     Logger       │
+                    │   (singleton)    │
+                    │                  │
+                    │  stdout          │
+                    │  result.txt      │
+                    └──────────────────┘
+```
+
+### Components
+
+| Component | File | Responsibility |
+|---|---|---|
+| `OrderManager` | `src/orderManager.ts` | Central orchestrator. Owns the pending queue, completed list, and bot fleet. Handles priority insertion, bot dispatch, and order completion callbacks. |
+| `Bot` | `src/bot.ts` | Stateful entity that processes one order at a time via a `setTimeout` timer. Supports graceful cancellation. |
+| `Order` | `src/order.ts` | Immutable value object with `id`, `type` (Normal/VIP), and mutable `status` (PENDING → PROCESSING → COMPLETE). |
+| `Logger` | `src/logger.ts` | Singleton dual-output logger. Writes timestamped `[HH:MM:SS]` lines to both `stdout` and `scripts/result.txt`. |
+| `index.ts` | `src/index.ts` | Entry point. Runs a scripted simulation by default; passes `--interactive` / `-i` to launch the menu-driven TUI. |
+
+---
+
+## Tech Stack
+
+| | Technology |
+|---|---|
+| Language | TypeScript 5.x (strict mode, ES2022 target) |
+| Runtime | Node.js ≥ 18 (ESM, `"type": "module"`) |
+| Execution | [tsx](https://github.com/privatenumber/tsx) — runs TypeScript directly, no build step |
+| Test framework | Node.js built-in `node:test` + `node:assert/strict` |
+| Type declarations | `@types/node ^22` |
+| Runtime dependencies | **None** — only `devDependencies` |
+
+---
+
+## Prerequisites
+
+- **Node.js ≥ 18** — required for the native `node:test` runner and ESM support.
+
+---
+
+## Installation
+
+```bash
+npm install
+```
+
+No compilation step is needed. `tsx` executes TypeScript source directly at runtime.
+
+---
+
+## Usage
+
+### Scripted Simulation
+
+Runs a choreographed scenario and writes output to `scripts/result.txt`:
+
+```bash
+npm start
+```
+
+The simulation:
+1. Adds 3 orders (Normal, VIP, Normal) before any bots exist.
+2. Adds 2 bots — they immediately pick up pending orders (VIP first).
+3. Waits ~12 seconds, then adds a VIP order (picked up by the idle bot).
+4. Waits for all processing to finish, then removes the newest bot.
+5. Prints a final summary.
+
+Sample output:
+```
+[10:05:01] System initialized with 0 bots
+[10:05:01] Created Order #1 [Normal] - Status: PENDING
+[10:05:02] Created Order #2 [VIP] - Status: PENDING
+[10:05:02] Created Order #3 [Normal] - Status: PENDING
+[10:05:02] Bot #1 created - Status: ACTIVE
+[10:05:02] Bot #1 picked up Order #2 [VIP] - Status: PROCESSING
+[10:05:03] Bot #2 created - Status: ACTIVE
+[10:05:03] Bot #2 picked up Order #1 [Normal] - Status: PROCESSING
+...
+Final Status:
+- Total Orders Processed: 4 (2 VIP, 2 Normal)
+```
+
+### Interactive TUI
+
+Launches a menu-driven REPL:
+
+```bash
+npm run start:interactive
+# or
+npx tsx src/index.ts --interactive
+npx tsx src/index.ts -i
+```
+
+Before each prompt, a live status bar is displayed:
+
+```
+┌────────────────────────────────────────────┐
+│  Bots: 2 (1 active)  Pending: 1  Done: 3  │
+└────────────────────────────────────────────┘
+  1) Add Normal Order
+  2) Add VIP Order
+  3) Add Bot
+  4) Remove Bot
+  5) Show pending queue
+  6) Show completed orders
+  7) Exit
+>
+```
+
+The TUI also handles piped input (CI-friendly) and `Ctrl+C` for graceful shutdown.
+
+---
+
+## Running Tests
+
+```bash
+npm test
+```
+
+Uses Node.js's built-in `node:test` runner with `t.mock.timers` to mock `setTimeout`, so the 10-second processing window is instant — no real waiting in tests.
+
+**13 test cases across 6 suites:**
+
+| Suite | Cases |
+|---|---|
+| `Order` | Sequential ID generation; initial PENDING status for Normal and VIP orders |
+| `Priority Queue` | VIP jumps ahead of Normal; VIP queues behind existing VIPs; Normal FIFO ordering |
+| `Bot - add bot` | Idle when no orders; picks up order on arrival; picks up VIP before Normal |
+| `Bot - order completion` | Order moves to COMPLETE after 10 s; bot picks up next order; bot goes idle when queue empties |
+| `Bot - idle bot picks up new order` | Idle bot immediately processes a newly added order |
+| `Bot - remove bot` | No-op when no bots exist; decreases bot count; returns in-progress order to PENDING; returned VIP re-inserted at correct position; LIFO removal (newest bot first) |
+
+---
+
+## Project Structure
+
+```
+se-take-home-assignment/
+├── .github/
+│   └── workflows/
+│       └── backend-verify-result.yaml  # CI pipeline (runs test → build → run, verifies result.txt)
+├── scripts/
+│   ├── build.sh                        # Runs npm install
+│   ├── run.sh                          # Runs the scripted simulation
+│   ├── test.sh                         # Runs the unit test suite
+│   └── result.txt                      # Simulation output (gitignored, regenerated by CI)
+├── src/
+│   ├── index.ts                        # Entry point: scripted simulation + interactive TUI
+│   ├── orderManager.ts                 # Core orchestrator (queue, bots, dispatch logic)
+│   ├── order.ts                        # Order domain model
+│   ├── bot.ts                          # Bot domain model (timer-based processing)
+│   └── logger.ts                       # Dual-output logger (stdout + result.txt)
+├── tests/
+│   └── orderManager.test.ts            # All unit tests (13 cases)
+├── package.json
+├── tsconfig.json
+└── README-ori.md                       # Original assignment brief
+```
+
+---
+
+## OrderManager API
+
+The `OrderManager` class is the primary programmatic interface:
+
+| Method | Returns | Description |
+|---|---|---|
+| `addNormalOrder()` | `Order` | Creates and enqueues a Normal order; dispatches any idle bots. |
+| `addVIPOrder()` | `Order` | Creates and enqueues a VIP order (priority insertion behind existing VIPs, ahead of all Normals); dispatches idle bots. |
+| `addBot()` | `Bot` | Creates a new bot and immediately assigns a pending order if one exists. |
+| `removeBot()` | `Bot \| null` | Destroys the newest bot (LIFO). If it was processing an order, the order is returned to its correct position in the pending queue. Returns `null` if no bots exist. |
+| `getStatus()` | `{ bots, pending, completed, activeBots }` | Returns current counts for bots, active bots, pending orders, and completed orders. |
+| `getPendingQueue()` | `Order[]` | Returns a shallow copy of the current pending queue. |
+| `getCompletedOrders()` | `Order[]` | Returns a shallow copy of all completed orders. |
+| `getBots()` | `Bot[]` | Returns a shallow copy of the active bot list. |
+
+---
+
+## Design Decisions
+
+**Priority queue via linear insertion**
+VIP orders are inserted by scanning the queue for the last VIP entry — O(n). This is simple and correct for the prototype scale; no heap or sorted structure is needed.
+
+**LIFO bot removal**
+`removeBot()` uses `Array.pop()` to always destroy the most recently added bot. This matches the requirement that "the newest bot" is removed.
+
+**Returned order re-enqueued via `_enqueue()`**
+When a bot is cancelled mid-order, the order is passed back through the same `_enqueue()` priority logic, guaranteeing it lands in the correct position (VIP orders stay ahead of Normals).
+
+**Timer mocking in tests**
+Tests use `t.mock.timers` from `node:test` to tick `setTimeout` forward instantly. This keeps the full suite fast (milliseconds) while testing real timing-dependent behavior. The logger is monkey-patched to a no-op in tests to suppress output.
+
+**No external dependencies**
+All functionality is built on Node.js built-ins (`readline`, `node:test`, `node:assert`, `setTimeout`). The only dev tools are `typescript`, `tsx`, and `@types/node`.
+
+**ESM-only**
+The project uses `"type": "module"` with `NodeNext` module resolution. All imports use explicit `.js` extensions (resolved to `.ts` at runtime by `tsx`).
+
+---
+
+## CI/CD
+
+The GitHub Actions workflow at `.github/workflows/backend-verify-result.yaml` triggers on pull requests to `main` and:
+
+1. Sets up Node.js 22 (and Go 1.23 per the original repo scaffold).
+2. Runs `scripts/test.sh` — all unit tests must pass.
+3. Runs `scripts/build.sh` — installs dependencies.
+4. Runs `scripts/run.sh` — executes the scripted simulation.
+5. Verifies that `scripts/result.txt` exists, is non-empty, and contains at least one `HH:MM:SS` timestamp.
